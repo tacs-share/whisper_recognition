@@ -66,8 +66,10 @@ def save_result(file_path,result):
     print(output_path)
     # 出力ファイルに書き込み
     with open(output_path, "w", encoding="utf-8") as f:
-        for seg in result["segments"]:
-            f.write(seg["text"]+"\n")
+        for segment in result["segments"]:
+            start = segment["start"]
+            end = segment["end"]
+            f.write(f"[{start} --> {end}] "+segment["text"]+"\n")
 
 def main():
     root = tk.Tk()
