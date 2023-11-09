@@ -21,7 +21,7 @@ import glob
 
 def get_audio_paths():
     # フォルダパスを取り出す
-    folder_path = filedialog.askdirectory(initialdir="C:/Share", title="フォルダ選択")
+    folder_path = filedialog.askdirectory( title="フォルダ選択")
 
     # 音声ファイルの拡張子のリストを作成
     audio_exts = [".wav", ".aiff",  ".mp3", ".aac",".flac", ".ogg",".m4a",".wma"]
@@ -60,28 +60,36 @@ def save_result(file_path,result):
     #"."が見つかった場合
     if index != -1: # "."から右を"txt"に置き換える 
         output_name = output_name[:index] + ".txt"
-    print("name:"+output_name)
     # 出力ファイルのパスを作成
     output_path = os.path.join(output_dir, output_name)
-    print(output_path)
+    print("output: "+output_path)
     # 出力ファイルに書き込み
     with open(output_path, "w", encoding="utf-8") as f:
+        # 音声区間ごとに処理
         for segment in result["segments"]:
-            start = segment["start"]
-            end = segment["end"]
-            f.write(f"[{start} --> {end}] "+segment["text"]+"\n")
+            # 音声区間の開始時間(秒)を取得
+            seconds = int(segment["start"])
+            # 時間・分・秒に変換する
+            hours = seconds // 3600 # 1時間は3600秒
+            minutes = (seconds % 3600) // 60 # 残りの秒数を60で割る
+            seconds = (seconds % 3600) % 60 # 残りの秒数を60で割った余り
+            # 書き込み
+            f.write(f"[{hours:02}:{minutes:02}:{seconds:02}] "+segment["text"]+"\n")
 
 def main():
     root = tk.Tk()
     root.withdraw()
-    # file_path = filedialog.askopenfilename()
+    # ファイル名一覧をフォルダから取得
     file_paths=get_audio_paths()
     print(file_paths)
     
-
+    # モデルのロード (無ければwebからダウンロード)
     model = whisper.load_model("large")
+    # 音声ファイルを文字起こし
     for file_path in file_paths:
+        # 音声認識結果(辞書)を取得
         result = model.transcribe(file_path, verbose=True, language="ja")
+        # 認識結果をパースして音声ファイルと同名の.txtに保存
         save_result(file_path,result)
 
 if __name__ == '__main__':
