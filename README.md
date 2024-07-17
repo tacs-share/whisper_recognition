@@ -32,6 +32,7 @@ choco install gsudo
 
 
 # Can't you use Github?
+Run PowerShell as administrator and execute the following:
 ```sh
 # powershell
 # installer dir_path (Downloads)
@@ -39,22 +40,45 @@ $username=(Get-ChildItem Env:\USERNAME).Value
 $downloads="C:\Users\"+$username+ "\Downloads"
 
 #install git
+echo "Downloading Git installer..."
 $dlPath=$downloads+"\git_installer.exe"
 $url="https://github.com/git-for-windows/git/releases/download/v2.41.0.windows.1/Git-2.41.0-64-bit.exe"
 Invoke-WebRequest $url -OutFile $dlPath
-Start-Process -FilePath $dlPath
+echo "Installing Git..."
+Start-Process -FilePath $dlPath -Wait
 
-#install github
-$dlPath=$downloads+"\github_installer.exe"
-$url="https://central.github.com/deployments/desktop/desktop/latest/win32"
-Invoke-WebRequest $url -OutFile $dlPath
-Start-Process -FilePath $dlPath
+# install python
+echo "Downloading Python installer..."
+$python_installer_path=$downloads+"\python_installer.exe"
+$python_url="https://www.python.org/ftp/python/3.10.0/python-3.10.0-amd64.exe"
+Invoke-WebRequest $python_url -OutFile $python_installer_path
+echo "Installing Python..."
+Start-Process -FilePath $python_installer_path -ArgumentList "/quiet InstallAllUsers=1 PrependPath=1" -Wait
+echo "Python version:"
+python --version
 
-#install VScode
-$dlPath=$downloads+"\vscode_installer.exe"
-$url="https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user"
-Invoke-WebRequest $url -OutFile $dlPath
-Start-Process -FilePath $dlPath
+# install chocolatey
+echo "Installing Chocolatey..."
+Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
 
-python
+echo "Chocolatey installed. Please restart PowerShell to continue."
+
+```
+(restart powershell)
+```sh
+# powershell
+$username=(Get-ChildItem Env:\USERNAME).Value
+$downloads="C:\Users\"+$username+ "\Downloads"
+
+# install ffmpeg
+echo "Installing ffmpeg..."
+choco install ffmpeg
+
+# git clone
+echo "Cloning the repository..."
+git clone https://github.com/tacs-share/whisper_recognition.git $downloads\whisper_recognition
+Set-Location $downloads\whisper_recognition
+echo "Installing required Python packages..."
+pip install -r requirements.txt
+
 ```
