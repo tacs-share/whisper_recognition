@@ -84,7 +84,7 @@ def main():
     print(file_paths)
     
     # モデルのロード (無ければwebからダウンロード)
-    model = whisper.load_model("large-v2")
+    model = whisper.load_model("large")
     # 音声ファイルを文字起こし
     for file_path in file_paths:
         # 音声認識結果(辞書)を取得
