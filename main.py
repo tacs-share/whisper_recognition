@@ -18,6 +18,8 @@ from tkinter import filedialog
 import whisper
 import os
 import glob
+import torch
+import logging
 
 import m2w
 
@@ -110,11 +112,50 @@ def save_result(file_path,result):
             minutes = (seconds % 3600) // 60 # 残りの秒数を60で割る
             seconds = (seconds % 3600) % 60 # 残りの秒数を60で割った余り
             # 書き込み
-            f.write(f"[{hours:02}:{minutes:02}:{seconds:02}] "+segment["text"]+"\n")
+            f.write(f"[{hours:02}:{minutes:02}:{seconds:02}]\t{segment['text']}\n")
+
+def setup_logger():
+    """ロガーを設定する関数"""
+    # ロガーを作成
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)  # ログレベルをDEBUGに設定
+
+    # コンソールハンドラを作成してロガーに追加
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.DEBUG)
+
+    # フォーマッタを作成してハンドラに設定
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    console_handler.setFormatter(formatter)
+
+    # ハンドラをロガーに追加
+    logger.addHandler(console_handler)
+
+    # ログメッセージを出力
+    logger.debug("Logger has been set up.")
+    return logger
 
 def main():
+    """メイン関数"""
+    # ロガーを設定
+    logger = setup_logger()
+
+    # 利用可能なモデルを表示
+    print(whisper.available_models())
     # モデルのロード (無ければwebからダウンロード)
-    model = whisper.load_model("large")
+
+    model_size = "large"  # 使用するモデルサイズ
+    if torch.cuda.is_available():
+        """
+        GPU利用にはcudaをインストールする必要がある．cudaのバージョンは環境依存なので中級者向け．だいたいcu118でいいけど，やりこむならもっと別のバージョン入れる
+        python3 -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+        """
+        model = whisper.load_model(model_size, device="cuda")  # GPUを指定
+        logger.debug("GPUを使用してモデルをロードしました。")
+    else:
+
+        model = whisper.load_model(model_size)  # デフォルト(CPUを指定)
+        logger.debug("CPUを使用してモデルをロードしました。")
 
 
     # まとめて文字起こししたいフォルダのパスを取得
