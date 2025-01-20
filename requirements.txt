@@ -1,1 +1,5 @@
 git+https://github.com/openai/whisper.git
+pyannote.audio
+huggingface_hub[cli]
+openai
+dotenv
