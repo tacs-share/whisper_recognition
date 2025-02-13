@@ -51,7 +51,7 @@ SPEAKER_DICT = {
 }
 MAX_SPEAKER=5
 
-def smart_replacer(text:str,situation:str,find_words: list, replace_words: dict) -> dict:
+def smart_replace(text:str,situation:str,find_words: list, replace_words: dict) -> dict:
     """
     ChatGPTを使用して、単語群を置き換えるマッピングを生成する。
 
@@ -132,7 +132,7 @@ def replacer_tester():
 - userが与えた上書きする単語リストに含まれないラベルが存在する場合，assistantの判断で出力に追加すること
 """
     replace_dict={"Robot":"人間の話を聞いている。自分の情報をほとんど持たないので聞き役になることが多い．1人3役で話す","Human":"ロボットと話をしている。ロボットではないので，たくさんの個人情報を持っている", "実験者":"実験の主催者．ほとんど話さないが，時々実験の教示などを行うことがある"}
-    replace=smart_replacer(text,situation=situation,find_words=speaker_list,replace_words=replace_dict)
+    replace=smart_replace(text,situation=situation,find_words=speaker_list,replace_words=replace_dict)
     print(replace)
     for old_word, new_word in replace.items():
         text = text.replace(old_word, new_word)
@@ -272,6 +272,7 @@ class Transcriber:
                 else:
                     speaker_durations[speaker] = overlap
         if not speaker_durations:
+            print("指定期間はどこの発話とも重なっていない！")
             return None
         # 最も発話時間が長い話者を取得
         dominant_speaker = max(speaker_durations, key=speaker_durations.get)
@@ -300,7 +301,7 @@ class Transcriber:
         """
         
         # smart_replacerを使用して置換を実行
-        replace = smart_replacer(text, situation=situation, find_words=speaker_list, replace_words=replace_dict)
+        replace = smart_replace(text, situation=situation, find_words=speaker_list, replace_words=replace_dict)
         
         # 置換結果をテキストに反映
         for old_word, new_word in replace.items():
@@ -308,45 +309,37 @@ class Transcriber:
         
         return text
 
-    def save_result(self, file_path, result, annotated_list: list):
+    def parse_result(self, file_path, result, annotated_list: list):
         file_path = os.path.normpath(file_path)
-        # 出力を保存するディレクトリを指定
-        output_dir = os.path.dirname(file_path)  # os.path.dirnameで親ディレクトリを取得
-        output_name = os.path.basename(file_path)
-        index = output_name.rfind(".")
-
-        #"."が見つかった場合
-        if index != -1:  # "."から右を"txt"に置き換える 
-            output_name = output_name[:index] + ".txt"
-        # 出力ファイルのパスを作成
-        output_path = os.path.join(output_dir, output_name)
-        print("output: " + output_path)
         # 音声区間ごとに処理
-        text=""
+        parsed_segments = [["時間", "話者", "テキスト"]]  # 項目名のリストを初期化
         # 1つ前のループの話者を保存する変数を初期化
         previous_speaker = None
-        previous_text =None
+        previous_text = None
         for segment in result["segments"]:
             speaker = self.get_speaker(segment["start"], segment["end"], annotated_list)
-            if previous_speaker!=speaker:
+            if previous_speaker != speaker:
                 # 音声区間の開始時間(秒)を取得
                 seconds = int(segment["start"])
                 # 時間・分・秒に変換する
                 hours = seconds // 3600  # 1時間は3600秒
                 minutes = (seconds % 3600) // 60  # 残りの秒数を60で割る
                 seconds = (seconds % 3600) % 60  # 残りの秒数を60で割った余り
-                # 書き込み
-                text+=f"\n[{hours:02}:{minutes:02}:{seconds:02}][{speaker}]\t{segment['text']}"
+                # 新しいセグメントを追加
+                # 時間を「:」区切りのテキストで表現
+                time_text = f"{hours:02}:{minutes:02}:{seconds:02}"
+                parsed_segments.append([time_text, speaker, segment['text']])
             else:
-                if previous_text!=segment['text']:# 同じ認識が繰り返されるバグが起きることがあるので，対策
+                if previous_text != segment['text']:  # 同じ認識が繰り返されるバグが起きることがあるので，対策
                     # 前回の記述に追記
-                    text+=' '+segment['text']
-            previous_text=segment['text']
-            previous_speaker=speaker
-        text=self.map_speaker(text,SPEAKER_DICT)
-        # 出力ファイルに書き込み
-        with open(output_path, "w", encoding="utf-8") as f:
-            f.write(text)
+                    parsed_segments[-1][2] += ' ' + segment['text']
+            previous_text = segment['text']
+            previous_speaker = speaker
+
+        # ここのコメントアウトを外すとchatGPTによる自動識別を行える
+        # parsed_segments = self.map_speaker(parsed_segments, SPEAKER_DICT)
+
+        return parsed_segments
 
     def setup_logger(self):
         """ロガーを設定する関数"""
@@ -393,8 +386,35 @@ class Transcriber:
         torch.cuda.empty_cache()
         return annotated_list
 
+    def save_text(self,file_path,text):
+        # 出力ファイルに書き込み
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(text)
     
-    def whisper_recognition(self,file_path,annotated_list):
+    def save_table(self,file_path,table:list):
+        """
+        出力結果を指定されたパスにCSV形式で保存するメソッド
+
+        Args:
+            file_path (str): 保存先のファイルパス。
+            table (list): 保存するデータ（リスト形式）
+        """
+        import csv
+        # ファイルパスの拡張子が.csvでない場合、拡張子を.csvに変更
+        if not file_path.endswith('.csv'):
+            file_path = file_path.rsplit('.', 1)[0] + '.csv'
+        # Start of Selection
+        try:
+            # shift_jisでエンコードできない文字が存在する場合、置き換え文字を使用してエンコード
+            with open(file_path, 'w', newline='', encoding='shift-jis', errors='replace') as f:
+                writer = csv.writer(f)
+                writer.writerows(table)
+            logging.info(f"出力結果を{file_path}に保存しました。")
+        except Exception as e:
+            logging.error(f"出力結果の保存中にエラーが発生しました: {e}")
+
+    
+    def whisper_recognize(self,file_path,annotated_list):
         # whisperモデルのロード (無ければwebからダウンロード)
         model_size = "large-v2"  # 使用するモデルサイズ(v3はめっちゃハルシネーションが起こるのでv2を利用．これ以上精度上げるならもっといいデバイス使うしかない)
         if torch.cuda.is_available():
@@ -409,11 +429,13 @@ class Transcriber:
             self.logger.debug("CPUを使用してモデルをロードしました。")
         
         result = model.transcribe(file_path, verbose=True, language="ja")
-        self.save_result(file_path,result,annotated_list)
+        transcribed_data =self.parse_result(file_path,result,annotated_list)
 
         # 使い終わったらリリース (めっちゃGPUメモリ食うので)
         del model
         torch.cuda.empty_cache()
+
+        return transcribed_data
 
     def transcribe(self,dirpath):
         """メイン関数"""
@@ -441,7 +463,19 @@ class Transcriber:
         # 音声ファイルを文字起こし
         for wav_path in wav_paths:
             annotated_list=self.get_annotated_list(wav_path)
-            self.whisper_recognition(wav_path,annotated_list)
+            recognized_table=self.whisper_recognize(wav_path,annotated_list)
+            # 出力を保存するディレクトリを指定
+            output_dir = os.path.dirname(file_path)  # os.path.dirnameで親ディレクトリを取得
+            output_name = os.path.basename(file_path)
+            index = output_name.rfind(".")
+            #"."が見つかった場合
+            if index != -1:  # "."から右を"txt"に置き換える 
+                output_name = output_name[:index] + ".txt"
+            # 出力ファイルのパスを作成
+            output_path = os.path.join(output_dir, output_name)
+            print("output: " + output_path)
+            # 出力ファイルに書き込み
+            self.save_table(output_path,recognized_table)
 
 def main():
     transcriber=Transcriber()
